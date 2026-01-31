@@ -7,12 +7,13 @@ export default function AdminDashboard() {
   const [secret, setSecret] = useState('');
   const [authenticated, setAuthenticated] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
-  const [newProject, setNewProject] = useState({ key: '', name: '', client: '', type: 'app' });
+  const [newProject, setNewProject] = useState({ key: '', name: '', client: '', type: 'app', domains: '' });
   const [editingAssets, setEditingAssets] = useState(null);
   const [assetContent, setAssetContent] = useState({ css: '', js: '' });
+  const [editingProject, setEditingProject] = useState(null);
+  const [projectSettings, setProjectSettings] = useState({ domains: '', cssVersion: '', jsVersion: '' });
 
   useEffect(() => {
-    // Check for saved secret in sessionStorage
     const savedSecret = sessionStorage.getItem('admin_secret');
     if (savedSecret) {
       setSecret(savedSecret);
@@ -73,18 +74,23 @@ export default function AdminDashboard() {
   const createProject = async (e) => {
     e.preventDefault();
     try {
+      const projectData = {
+        ...newProject,
+        domains: newProject.domains ? newProject.domains.split(',').map(d => d.trim()).filter(d => d) : []
+      };
+      
       const res = await fetch('/api/admin/projects', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${secret}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(newProject)
+        body: JSON.stringify(projectData)
       });
       
       if (res.ok) {
         setShowNewProject(false);
-        setNewProject({ key: '', name: '', client: '', type: 'app' });
+        setNewProject({ key: '', name: '', client: '', type: 'app', domains: '' });
         fetchProjects(secret);
       } else {
         const data = await res.json();
@@ -116,7 +122,6 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       
-      // Fetch CSS and JS content separately
       const cssRes = await fetch(`/api/v1/assets/style?key=${key}`);
       const jsRes = await fetch(`/api/v1/assets/script?key=${key}`);
       
@@ -150,6 +155,42 @@ export default function AdminDashboard() {
     }
   };
 
+  const openProjectSettings = (project) => {
+    setEditingProject(project.key);
+    setProjectSettings({
+      domains: (project.domains || []).join(', '),
+      cssVersion: project.cssVersion || '1.0',
+      jsVersion: project.jsVersion || '1.0'
+    });
+  };
+
+  const saveProjectSettings = async () => {
+    try {
+      await fetch(`/api/admin/projects?key=${editingProject}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${secret}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          domains: projectSettings.domains ? projectSettings.domains.split(',').map(d => d.trim()).filter(d => d) : [],
+          cssVersion: projectSettings.cssVersion,
+          jsVersion: projectSettings.jsVersion
+        })
+      });
+      setEditingProject(null);
+      fetchProjects(secret);
+    } catch (err) {
+      setError('Failed to save settings');
+    }
+  };
+
+  const incrementVersion = (type) => {
+    const currentVersion = parseFloat(projectSettings[type]) || 1.0;
+    const newVersion = (currentVersion + 0.1).toFixed(1);
+    setProjectSettings({ ...projectSettings, [type]: newVersion });
+  };
+
   // Login screen
   if (!authenticated) {
     return (
@@ -170,6 +211,72 @@ export default function AdminDashboard() {
             </button>
           </form>
           {error && <p style={styles.error}>{error}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  // Project settings modal
+  if (editingProject) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.dashboard}>
+          <div style={styles.header}>
+            <h1 style={styles.title}>Settings: {editingProject}</h1>
+            <button onClick={() => setEditingProject(null)} style={styles.buttonSecondary}>
+              Cancel
+            </button>
+          </div>
+          
+          <div style={styles.settingsForm}>
+            <div style={styles.settingGroup}>
+              <label style={styles.label}>Allowed Domains (comma separated)</label>
+              <input
+                type="text"
+                value={projectSettings.domains}
+                onChange={(e) => setProjectSettings({ ...projectSettings, domains: e.target.value })}
+                style={styles.input}
+                placeholder="oropraha.cz, www.oropraha.cz"
+              />
+              <p style={styles.hint}>Leave empty to allow all domains. Add domains to restrict access.</p>
+            </div>
+            
+            <div style={styles.versionRow}>
+              <div style={styles.settingGroup}>
+                <label style={styles.label}>CSS Version</label>
+                <div style={styles.versionInput}>
+                  <input
+                    type="text"
+                    value={projectSettings.cssVersion}
+                    onChange={(e) => setProjectSettings({ ...projectSettings, cssVersion: e.target.value })}
+                    style={{ ...styles.input, marginBottom: 0, flex: 1 }}
+                  />
+                  <button onClick={() => incrementVersion('cssVersion')} style={styles.buttonSmall}>
+                    +0.1
+                  </button>
+                </div>
+              </div>
+              
+              <div style={styles.settingGroup}>
+                <label style={styles.label}>JS Version</label>
+                <div style={styles.versionInput}>
+                  <input
+                    type="text"
+                    value={projectSettings.jsVersion}
+                    onChange={(e) => setProjectSettings({ ...projectSettings, jsVersion: e.target.value })}
+                    style={{ ...styles.input, marginBottom: 0, flex: 1 }}
+                  />
+                  <button onClick={() => incrementVersion('jsVersion')} style={styles.buttonSmall}>
+                    +0.1
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <button onClick={saveProjectSettings} style={styles.button}>
+            Save Settings
+          </button>
         </div>
       </div>
     );
@@ -252,6 +359,12 @@ export default function AdminDashboard() {
               onChange={(e) => setNewProject({ ...newProject, client: e.target.value })}
               style={styles.input}
             />
+            <input
+              placeholder="Allowed Domains (comma separated, e.g., oropraha.cz, www.oropraha.cz)"
+              value={newProject.domains}
+              onChange={(e) => setNewProject({ ...newProject, domains: e.target.value })}
+              style={styles.input}
+            />
             <select
               value={newProject.type}
               onChange={(e) => setNewProject({ ...newProject, type: e.target.value })}
@@ -282,7 +395,11 @@ export default function AdminDashboard() {
                         {project.client && <span>{project.client} • </span>}
                         <code style={styles.code}>{project.key}</code>
                         <span style={styles.typeBadge}>{project.type}</span>
+                        {project.cssVersion && <span style={styles.versionBadge}>v{project.cssVersion}</span>}
                       </p>
+                      {project.domains && project.domains.length > 0 && (
+                        <p style={styles.domains}>🔒 {project.domains.join(', ')}</p>
+                      )}
                     </div>
                     <div style={styles.projectActions}>
                       <button
@@ -326,6 +443,9 @@ export default function AdminDashboard() {
                   </div>
                   
                   <div style={styles.projectFooter}>
+                    <button onClick={() => openProjectSettings(project)} style={styles.buttonSmall}>
+                      ⚙️ Settings
+                    </button>
                     {(project.type === 'css' || project.type === 'js' || project.type === 'bundle') && (
                       <button onClick={() => loadAssets(project.key)} style={styles.buttonSmall}>
                         Edit Assets
@@ -498,6 +618,19 @@ const styles = {
     fontSize: '12px',
     textTransform: 'uppercase'
   },
+  versionBadge: {
+    marginLeft: '10px',
+    padding: '2px 8px',
+    backgroundColor: '#0ea5e933',
+    color: '#22d3ee',
+    borderRadius: '4px',
+    fontSize: '12px'
+  },
+  domains: {
+    margin: '5px 0 0 0',
+    fontSize: '12px',
+    color: '#fbbf24'
+  },
   toggle: {
     padding: '8px 16px',
     fontSize: '12px',
@@ -562,5 +695,34 @@ const styles = {
     color: '#f8fafc',
     resize: 'vertical',
     boxSizing: 'border-box'
+  },
+  settingsForm: {
+    backgroundColor: '#1e293b',
+    padding: '20px',
+    borderRadius: '12px',
+    marginBottom: '20px'
+  },
+  settingGroup: {
+    marginBottom: '20px'
+  },
+  label: {
+    display: 'block',
+    marginBottom: '8px',
+    fontWeight: '600',
+    color: '#e2e8f0'
+  },
+  hint: {
+    margin: '8px 0 0 0',
+    fontSize: '12px',
+    color: '#64748b'
+  },
+  versionRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '20px'
+  },
+  versionInput: {
+    display: 'flex',
+    gap: '10px'
   }
 };
