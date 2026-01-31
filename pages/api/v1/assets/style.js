@@ -1,4 +1,9 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN,
+});
 
 // This endpoint serves CSS files
 // When project is inactive, returns empty/minimal CSS
@@ -15,7 +20,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const project = await kv.get(`project:${key}`);
+    const project = await redis.get(`project:${key}`);
     
     if (!project || !project.active) {
       // Return empty CSS when inactive
@@ -23,14 +28,14 @@ export default async function handler(req, res) {
     }
 
     // Get the CSS content
-    const css = await kv.get(`css:${key}`);
+    const css = await redis.get(`css:${key}`);
     
     if (!css) {
       return res.status(200).send('/* No styles configured */');
     }
 
     // Log access
-    await kv.hincrby(`stats:${key}`, 'css_requests', 1);
+    await redis.hincrby(`stats:${key}`, 'css_requests', 1);
 
     return res.status(200).send(css);
 

@@ -1,4 +1,9 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN,
+});
 
 // Admin API for managing projects
 // Protected by ADMIN_SECRET environment variable
@@ -39,14 +44,14 @@ async function handleGet(req, res) {
   
   if (key) {
     // Get specific project
-    const project = await kv.get(`project:${key}`);
+    const project = await redis.get(`project:${key}`);
     if (!project) {
       return res.status(404).json({ error: 'Project not found' });
     }
     
     // Get logs and stats
-    const logs = await kv.lrange(`logs:${key}`, 0, 19);
-    const stats = await kv.hgetall(`stats:${key}`);
+    const logs = await redis.lrange(`logs:${key}`, 0, 19);
+    const stats = await redis.hgetall(`stats:${key}`);
     
     return res.status(200).json({ 
       project, 
@@ -56,13 +61,13 @@ async function handleGet(req, res) {
   }
   
   // List all projects
-  const keys = await kv.keys('project:*');
+  const keys = await redis.keys('project:*');
   const projects = [];
   
   for (const k of keys) {
-    const project = await kv.get(k);
+    const project = await redis.get(k);
     const projectKey = k.replace('project:', '');
-    const stats = await kv.hgetall(`stats:${projectKey}`);
+    const stats = await redis.hgetall(`stats:${projectKey}`);
     projects.push({ 
       key: projectKey, 
       ...project,
@@ -82,7 +87,7 @@ async function handlePost(req, res) {
   }
   
   // Check if project already exists
-  const existing = await kv.get(`project:${key}`);
+  const existing = await redis.get(`project:${key}`);
   if (existing) {
     return res.status(409).json({ error: 'Project already exists' });
   }
@@ -97,7 +102,7 @@ async function handlePost(req, res) {
     updatedAt: Date.now()
   };
   
-  await kv.set(`project:${key}`, project);
+  await redis.set(`project:${key}`, project);
   
   return res.status(201).json({ project });
 }
@@ -111,19 +116,19 @@ async function handlePut(req, res) {
     return res.status(400).json({ error: 'Project key is required' });
   }
   
-  const project = await kv.get(`project:${key}`);
+  const project = await redis.get(`project:${key}`);
   if (!project) {
     return res.status(404).json({ error: 'Project not found' });
   }
   
   // Handle special updates (CSS/JS content)
   if (updates.css !== undefined) {
-    await kv.set(`css:${key}`, updates.css);
+    await redis.set(`css:${key}`, updates.css);
     delete updates.css;
   }
   
   if (updates.js !== undefined) {
-    await kv.set(`js:${key}`, updates.js);
+    await redis.set(`js:${key}`, updates.js);
     delete updates.js;
   }
   
@@ -134,7 +139,7 @@ async function handlePut(req, res) {
     updatedAt: Date.now()
   };
   
-  await kv.set(`project:${key}`, updatedProject);
+  await redis.set(`project:${key}`, updatedProject);
   
   return res.status(200).json({ project: updatedProject });
 }
@@ -148,11 +153,11 @@ async function handleDelete(req, res) {
   }
   
   // Delete all related data
-  await kv.del(`project:${key}`);
-  await kv.del(`css:${key}`);
-  await kv.del(`js:${key}`);
-  await kv.del(`logs:${key}`);
-  await kv.del(`stats:${key}`);
+  await redis.del(`project:${key}`);
+  await redis.del(`css:${key}`);
+  await redis.del(`js:${key}`);
+  await redis.del(`logs:${key}`);
+  await redis.del(`stats:${key}`);
   
   return res.status(200).json({ deleted: true });
 }

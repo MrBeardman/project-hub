@@ -1,4 +1,10 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+// Initialize Redis client
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN,
+});
 
 // This endpoint looks like a normal config/analytics service
 // Client apps call this to "load configuration"
@@ -25,8 +31,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get project data from KV store
-    const project = await kv.get(`project:${key}`);
+    // Get project data from Redis
+    const project = await redis.get(`project:${key}`);
     
     if (!project) {
       // Unknown project - return default "inactive" response
@@ -43,14 +49,14 @@ export default async function handler(req, res) {
     }
 
     // Log the request for monitoring
-    await kv.lpush(`logs:${key}`, {
+    await redis.lpush(`logs:${key}`, JSON.stringify({
       ts: Date.now(),
       ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
       ua: req.headers['user-agent']
-    });
+    }));
     
     // Keep only last 100 logs
-    await kv.ltrim(`logs:${key}`, 0, 99);
+    await redis.ltrim(`logs:${key}`, 0, 99);
 
     // Return config based on project status
     const isActive = project.active === true;

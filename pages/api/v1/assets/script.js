@@ -1,4 +1,9 @@
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL,
+  token: process.env.KV_REST_API_TOKEN,
+});
 
 // This endpoint serves JavaScript files
 // When project is inactive, returns empty/no-op JS
@@ -15,7 +20,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const project = await kv.get(`project:${key}`);
+    const project = await redis.get(`project:${key}`);
     
     if (!project || !project.active) {
       // Return no-op JS when inactive
@@ -23,14 +28,14 @@ export default async function handler(req, res) {
     }
 
     // Get the JS content
-    const js = await kv.get(`js:${key}`);
+    const js = await redis.get(`js:${key}`);
     
     if (!js) {
       return res.status(200).send('// No scripts configured');
     }
 
     // Log access
-    await kv.hincrby(`stats:${key}`, 'js_requests', 1);
+    await redis.hincrby(`stats:${key}`, 'js_requests', 1);
 
     return res.status(200).send(js);
 
